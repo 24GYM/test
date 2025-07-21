@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Interactive Hall Plan</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .hall-container {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-bottom: 30px;
+      align-items: center;
+    }
+
+    .seat-row {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      justify-content: center;
+      transform: perspective(1000px) rotateX(5deg);
+      flex-wrap: wrap;
+      max-width: 100%;
+    }
+
+    .row-label {
+      width: 60px;
+      font-weight: bold;
+      text-align: right;
+      padding-right: 10px;
+    }
+
+    .seat {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #ccc;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 12px;
+      user-select: none;
+    }
+
+    .seat.vip {
+      width: 70px;
+      height: 75px;
+      background-color: #ffd700;
+      font-weight: bold;
+    }
+
+    .seat.regular {
+      width: 50px;
+      height: 50px;
+      background-color: #f0f0f0;
+    }
+
+    .seat:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+
+    /* Seat status colors */
+    .confirmed {
+      background-color: #a0e0a0 !important; /* Green - confirmed */
+    }
+    .unconfirmed {
+      background-color: #ff9999 !important; /* Red - unconfirmed */
+    }
+
+    .section-title {
+      font-weight: bold;
+      margin-top: 20px;
+      font-size: 18px;
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .search-container {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    .search-container input {
+      flex-grow: 1;
+      padding: 8px;
+    }
+
+    .status-filters {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .status-filter {
+      padding: 5px 10px;
+      border-radius: 15px;
+      cursor: pointer;
+      font-size: 12px;
+      border: 1px solid #ddd;
+    }
+
+    .status-filter.active {
+      font-weight: bold;
+      border-width: 2px;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 10;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.4);
+    }
+
+    .modal-content {
+      background-color: #fff;
+      position: relative;
+      top: 50%;
+      transform: translateY(-50%);
+      margin: 0 auto;
+      padding: 20px;
+      width: 400px;
+      max-width: 90%;
+      border-radius: 8px;
+      border: 1px solid #888;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+
+    .close {
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      margin-top: 5px;
+      margin-bottom: 10px;
+      padding: 6px;
+    }
+
+    button {
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    
+    .delete-btn {
+      background-color: #ff6b6b;
+      color: white;
+    }
+    
+    .dragging {
+      opacity: 0.5;
+      transform: scale(1.1);
+    }
+    
+    .drop-target {
+      background-color: #add8e6 !important;
+    }
+    
+    .stats {
+      text-align: center;
+      margin: 20px 0;
+      padding: 10px;
+      background-color: #f8f8f8;
+      border-radius: 5px;
+    }
+
+    .status-legend {
+      display: flex;
+      gap: 15px;
+      margin: 15px 0;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+    }
+
+    .legend-color {
+      width: 15px;
+      height: 15px;
+      border: 1px solid #999;
+    }
+
+    .highlighted {
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+    }
+  </style>
+</head>
+<body>
+  <h1>Event Hall Seating Plan</h1>
+
+  <div class="controls">
+    <div class="search-container">
+      <input type="text" id="searchInput" placeholder="Search guests by name or email..." />
+      <button onclick="searchGuests()">Search</button>
+      <button onclick="clearSearch()">Clear</button>
+    </div>
+
+    <div class="status-filters">
+      <div class="status-filter active" data-status="all" onclick="filterSeats('all')">All</div>
+      <div class="status-filter" data-status="confirmed" onclick="filterSeats('confirmed')">Confirmed</div>
+      <div class="status-filter" data-status="unconfirmed" onclick="filterSeats('unconfirmed')">Unconfirmed</div>
+      <div class="status-filter" data-status="available" onclick="filterSeats('available')">Available</div>
+    </div>
+
+    <div class="status-legend">
+      <div class="legend-item"><div class="legend-color" style="background-color: #ffd700;"></div> VIP</div>
+      <div class="legend-item"><div class="legend-color" style="background-color: #f0f0f0;"></div> Regular</div>
+      <div class="legend-item"><div class="legend-color" style="background-color: #a0e0a0;"></div> Confirmed</div>
+      <div class="legend-item"><div class="legend-color" style="background-color: #ff9999;"></div> Unconfirmed</div>
+    </div>
+
+    <input type="file" id="csvFile" accept=".csv" />
+    <div class="button-group">
+      <button onclick="loadGuestData()">Load Guest Data</button>
+      <button onclick="exportToCSV()">Export Assignments</button>
+      <button onclick="clearAllAssignments()">Clear All</button>
+    </div>
+    <div class="stats" id="stats">
+      Total Seats: <span id="totalSeats">0</span> | 
+      Confirmed: <span id="confirmedSeats">0</span> | 
+      Unconfirmed: <span id="unconfirmedSeats">0</span> |
+      Available: <span id="availableSeats">0</span>
+    </div>
+  </div>
+
+  <div class="hall-container">
+    <div class="section-title">VIP Seats</div>
+    <div class="seat-row" id="vipA"><div class="row-label">VIP A</div></div>
+    <div class="seat-row" id="vipB"><div class="row-label">VIP B</div></div>
+    <div class="seat-row" id="vipC"><div class="row-label">VIP C</div></div>
+
+    <div class="section-title">Regular Seats</div>
+    <div class="seat-row" id="rowA"><div class="row-label">A</div></div>
+    <div class="seat-row" id="rowB"><div class="row-label">B</div></div>
+    <div class="seat-row" id="rowC"><div class="row-label">C</div></div>
+    <div class="seat-row" id="rowD"><div class="row-label">D</div></div>
+    <div class="seat-row" id="rowE"><div class="row-label">E</div></div>
+    <div class="seat-row" id="rowF"><div class="row-label">F</div></div>
+    <div class="seat-row" id="rowG"><div class="row-label">G</div></div>
+  </div>
+
+  <!-- Modal -->
+  <div id="guestModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="modal.style.display='none'">&times;</span>
+      <h2 id="seatTitle">Seat Info</h2>
+      <div id="guestDetails"><p>No guest assigned to this seat.</p></div>
+      <form id="guestForm">
+        <input type="hidden" id="currentSeatId" />
+        <label>Name: <input type="text" id="guestName" required /></label>
+        <label>Email: <input type="email" id="guestEmail" /></label>
+        <label>Confirmed: 
+          <input type="checkbox" id="guestStatus" checked />
+        </label>
+        <label>Notes: <textarea id="guestNotes"></textarea></label>
+        <div class="button-group">
+          <button type="button" onclick="saveGuestData()">Save</button>
+          <button type="button" class="delete-btn" onclick="deleteGuest()">Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const seatData = {};
+    const modal = document.getElementById('guestModal');
+    let draggedSeat = null;
+    let currentFilter = 'all';
+    let currentSearchTerm = '';
+
+    function initializeHall() {
+      // Updated VIP rows with new seat counts
+      createSeatRow('vipA', 'VIP A', 12, true);  // First VIP row - 12 seats
+      createSeatRow('vipB', 'VIP B', 24, true);  // Second VIP row - 24 seats
+      createSeatRow('vipC', 'VIP C', 24, true);  // Third VIP row - 24 seats
+      
+      // Regular rows remain unchanged
+      ['rowA', 'rowB', 'rowC', 'rowD', 'rowE', 'rowF', 'rowG'].forEach(id => createSeatRow(id, id.toUpperCase(), 28));
+      loadFromLocalStorage();
+      setupDragAndDrop();
+      updateStats();
+    }
+
+    function createSeatRow(containerId, rowLabel, seatCount, isVIP = false) {
+      const container = document.getElementById(containerId);
+      const midpoint = Math.floor(seatCount / 2);
+
+      for (let i = 1; i <= seatCount; i++) {
+        if (!isVIP && i === midpoint + 1) {
+          const spacer = document.createElement('div');
+          spacer.style.width = '40px';
+          spacer.style.height = isVIP ? '75px' : '50px';
+          container.appendChild(spacer);
+        }
+
+        const seatId = `${isVIP ? 'VIP' : 'REG'}-${rowLabel}-${i}`;
+        const seat = document.createElement('div');
+        seat.className = `seat ${isVIP ? 'vip' : 'regular'}`;
+        seat.textContent = i;
+        seat.id = seatId;
+        seat.title = '';
+        seat.setAttribute('draggable', 'true');
+        seat.onclick = () => showGuestInfo(seatId);
+        container.appendChild(seat);
+
+        seatData[seatId] = {
+          type: isVIP ? 'VIP' : 'Regular',
+          row: rowLabel,
+          number: i,
+          guest: null,
+          confirmed: null
+        };
+      }
+    }
+
+    function setupDragAndDrop() {
+      const seats = document.querySelectorAll('.seat');
+      
+      seats.forEach(seat => {
+        seat.addEventListener('dragstart', handleDragStart);
+        seat.addEventListener('dragover', handleDragOver);
+        seat.addEventListener('dragenter', handleDragEnter);
+        seat.addEventListener('dragleave', handleDragLeave);
+        seat.addEventListener('drop', handleDrop);
+        seat.addEventListener('dragend', handleDragEnd);
+      });
+    }
+
+    function handleDragStart(e) {
+      draggedSeat = this;
+      this.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', this.id);
+      e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function handleDragOver(e) {
+      if (e.preventDefault) e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    }
+
+    function handleDragEnter(e) {
+      if (this !== draggedSeat) {
+        this.classList.add('drop-target');
+      }
+    }
+
+    function handleDragLeave() {
+      this.classList.remove('drop-target');
+    }
+
+    function handleDrop(e) {
+      if (e.stopPropagation) e.stopPropagation();
+      
+      if (this !== draggedSeat) {
+        const sourceSeatId = draggedSeat.id;
+        const targetSeatId = this.id;
+        
+        // Swap guest data
+        const tempGuest = seatData[sourceSeatId].guest;
+        const tempConfirmed = seatData[sourceSeatId].confirmed;
+        
+        seatData[sourceSeatId].guest = seatData[targetSeatId].guest;
+        seatData[sourceSeatId].confirmed = seatData[targetSeatId].confirmed;
+        
+        seatData[targetSeatId].guest = tempGuest;
+        seatData[targetSeatId].confirmed = tempConfirmed;
+        
+        // Update UI
+        updateSeatAppearance(sourceSeatId);
+        updateSeatAppearance(targetSeatId);
+        
+        saveToLocalStorage();
+        updateStats();
+      }
+      
+      this.classList.remove('drop-target');
+      return false;
+    }
+
+    function handleDragEnd() {
+      this.classList.remove('dragging');
+      document.querySelectorAll('.seat').forEach(seat => {
+        seat.classList.remove('drop-target');
+      });
+    }
+
+    function updateSeatAppearance(seatId) {
+      const seat = document.getElementById(seatId);
+      const guest = seatData[seatId].guest;
+      const confirmed = seatData[seatId].confirmed;
+      
+      // Clear status classes
+      seat.classList.remove('confirmed', 'unconfirmed');
+      
+      if (guest) {
+        if (confirmed) {
+          seat.classList.add('confirmed');
+          seat.title = `${guest.name} (Confirmed)\n${guest.email || ''}`;
+        } else {
+          seat.classList.add('unconfirmed');
+          seat.title = `${guest.name} (Unconfirmed)\n${guest.email || ''}`;
+        }
+      } else {
+        seat.title = '';
+      }
+      
+      // Apply filtering
+      applyFilterToSeat(seatId);
+    }
+
+    function showGuestInfo(seatId) {
+      const seat = seatData[seatId];
+      document.getElementById('seatTitle').textContent = `${seat.type} Seat ${seat.row}-${seat.number}`;
+      document.getElementById('currentSeatId').value = seatId;
+
+      if (seat.guest) {
+        document.getElementById('guestDetails').innerHTML = `
+          <p><strong>Name:</strong> ${seat.guest.name}</p>
+          <p><strong>Email:</strong> ${seat.guest.email}</p>
+          <p><strong>Status:</strong> ${seat.confirmed ? 'Confirmed' : 'Unconfirmed'}</p>
+          <p><strong>Notes:</strong> ${seat.guest.notes || 'None'}</p>
+        `;
+        document.getElementById('guestName').value = seat.guest.name;
+        document.getElementById('guestEmail').value = seat.guest.email;
+        document.getElementById('guestStatus').checked = seat.confirmed !== false;
+        document.getElementById('guestNotes').value = seat.guest.notes;
+      } else {
+        document.getElementById('guestDetails').innerHTML = `<p>No guest assigned to this seat.</p>`;
+        document.getElementById('guestName').value = '';
+        document.getElementById('guestEmail').value = '';
+        document.getElementById('guestStatus').checked = true;
+        document.getElementById('guestNotes').value = '';
+      }
+
+      modal.style.display = 'block';
+    }
+
+    function saveGuestData() {
+      const seatId = document.getElementById('currentSeatId').value;
+      const name = document.getElementById('guestName').value;
+      const email = document.getElementById('guestEmail').value;
+      const confirmed = document.getElementById('guestStatus').checked;
+      const notes = document.getElementById('guestNotes').value;
+      const seatEl = document.getElementById(seatId);
+
+      if (name) {
+        seatData[seatId].guest = { name, email, notes };
+        seatData[seatId].confirmed = confirmed;
+        updateSeatAppearance(seatId);
+      } else {
+        seatData[seatId].guest = null;
+        seatData[seatId].confirmed = null;
+        updateSeatAppearance(seatId);
+      }
+
+      saveToLocalStorage();
+      updateStats();
+      modal.style.display = 'none';
+    }
+
+    function deleteGuest() {
+      const seatId = document.getElementById('currentSeatId').value;
+      const seatEl = document.getElementById(seatId);
+      
+      if (confirm('Are you sure you want to remove this guest assignment?')) {
+        seatData[seatId].guest = null;
+        seatData[seatId].confirmed = null;
+        updateSeatAppearance(seatId);
+        saveToLocalStorage();
+        updateStats();
+        modal.style.display = 'none';
+      }
+    }
+
+    function clearAllAssignments() {
+      if (confirm('Are you sure you want to clear ALL seat assignments?')) {
+        for (const seatId in seatData) {
+          seatData[seatId].guest = null;
+          seatData[seatId].confirmed = null;
+          updateSeatAppearance(seatId);
+        }
+        saveToLocalStorage();
+        updateStats();
+      }
+    }
+
+    function updateStats() {
+      const total = Object.keys(seatData).length;
+      const confirmed = Object.values(seatData).filter(seat => seat.guest && seat.confirmed).length;
+      const unconfirmed = Object.values(seatData).filter(seat => seat.guest && !seat.confirmed).length;
+      const available = total - confirmed - unconfirmed;
+      
+      document.getElementById('totalSeats').textContent = total;
+      document.getElementById('confirmedSeats').textContent = confirmed;
+      document.getElementById('unconfirmedSeats').textContent = unconfirmed;
+      document.getElementById('availableSeats').textContent = available;
+    }
+
+    function saveToLocalStorage() {
+      localStorage.setItem('seatAssignments', JSON.stringify(seatData));
+    }
+
+    function loadFromLocalStorage() {
+      const saved = localStorage.getItem('seatAssignments');
+      if (!saved) return;
+      const loadedData = JSON.parse(saved);
+      for (const seatId in loadedData) {
+        const guest = loadedData[seatId].guest;
+        const confirmed = loadedData[seatId].confirmed;
+        if (seatData[seatId]) {
+          seatData[seatId].guest = guest;
+          seatData[seatId].confirmed = confirmed;
+          updateSeatAppearance(seatId);
+        }
+      }
+      updateStats();
+    }
+
+    function loadGuestData() {
+      const fileInput = document.getElementById('csvFile');
+      const file = fileInput.files[0];
+      if (!file) return alert('Please select a CSV file.');
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const lines = e.target.result.split('\n');
+        const start = lines[0].includes('Seat') ? 1 : 0;
+        let importedCount = 0;
+        let skippedCount = 0;
+
+        for (let i = start; i < lines.length; i++) {
+          const [seatId, type, row, number, name, email, confirmed, notes] = lines[i].split(',').map(v => v?.trim());
+          
+          // Skip if no seat ID
+          if (!seatId) continue;
+          
+          if (seatData[seatId]) {
+            if (!name) {
+              // Clear assignment if name is empty
+              seatData[seatId].guest = null;
+              seatData[seatId].confirmed = null;
+              updateSeatAppearance(seatId);
+              skippedCount++;
+            } else {
+              // Only assign if the seat is empty or we're overwriting
+              if (!seatData[seatId].guest || confirm(`Seat ${seatId} already has guest ${seatData[seatId].guest.name}. Overwrite?`)) {
+                seatData[seatId].guest = { name, email, notes };
+                seatData[seatId].confirmed = confirmed !== 'false';
+                updateSeatAppearance(seatId);
+                importedCount++;
+              } else {
+                skippedCount++;
+              }
+            }
+          }
+        }
+
+        saveToLocalStorage();
+        updateStats();
+        alert(`Import complete!\n\nAssigned: ${importedCount}\nSkipped: ${skippedCount}`);
+      };
+
+      reader.readAsText(file);
+    }
+
+    function exportToCSV() {
+      let csv = 'Seat ID,Type,Row,Number,Name,Email,Confirmed,Notes\n';
+      for (const seatId in seatData) {
+        const s = seatData[seatId];
+        const g = s.guest || {};
+        csv += `${seatId},${s.type},${s.row},${s.number},${g.name || ''},${g.email || ''},${s.confirmed || ''},${g.notes || ''}\n`;
+      }
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'seat_assignments.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function searchGuests() {
+      currentSearchTerm = document.getElementById('searchInput').value.toLowerCase();
+      if (!currentSearchTerm) return;
+      
+      let foundAny = false;
+      
+      for (const seatId in seatData) {
+        const seat = seatData[seatId];
+        const seatEl = document.getElementById(seatId);
+        
+        if (seat.guest && (
+          seat.guest.name.toLowerCase().includes(currentSearchTerm) || 
+          (seat.guest.email && seat.guest.email.toLowerCase().includes(currentSearchTerm))
+        )) {
+          seatEl.classList.add('highlighted');
+          foundAny = true;
+        } else {
+          seatEl.classList.remove('highlighted');
+        }
+      }
+      
+      if (!foundAny) {
+        alert('No matching guests found');
+      }
+    }
+
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      currentSearchTerm = '';
+      document.querySelectorAll('.seat').forEach(seat => {
+        seat.classList.remove('highlighted');
+      });
+    }
+
+    function filterSeats(status) {
+      currentFilter = status;
+      
+      // Update active filter button
+      document.querySelectorAll('.status-filter').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.status === status);
+      });
+      
+      // Apply filter to all seats
+      for (const seatId in seatData) {
+        applyFilterToSeat(seatId);
+      }
+    }
+
+    function applyFilterToSeat(seatId) {
+      const seat = document.getElementById(seatId);
+      const data = seatData[seatId];
+      
+      if (currentFilter === 'all') {
+        seat.style.display = '';
+      } else if (currentFilter === 'available') {
+        seat.style.display = !data.guest ? '' : 'none';
+      } else if (currentFilter === 'confirmed') {
+        seat.style.display = data.confirmed ? '' : 'none';
+      } else if (currentFilter === 'unconfirmed') {
+        seat.style.display = (data.guest && !data.confirmed) ? '' : 'none';
+      }
+    }
+
+    window.onload = initializeHall;
+  </script>
+</body>
+</html>
